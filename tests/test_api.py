@@ -15,7 +15,7 @@ def test_register_duplicate_email_rejected(client, user):
 
 
 def test_login_wrong_password(client, user):
-    r = client.post("/auth/login", params={"email": user["email"], "password": "wrong-password"})
+    r = client.post("/auth/login", json={"email": user["email"], "password": "wrong-password"})
     assert r.status_code == 401
 
 
@@ -25,8 +25,8 @@ def test_protected_routes_require_token(client):
     assert client.get("/applications").status_code == 401
 
 
-def test_company_validation_and_crud(client, user, company):
-    h = user["headers"]
+def test_company_validation_and_crud(client, admin, company):
+    h = admin["headers"]
     assert client.post("/companies", json={"name": PREFIX + "x"}, headers=h).status_code == 422
     assert client.get(f"/companies/{company['id']}", headers=h).json()["role"] == "SDE"
     r = client.put(f"/companies/{company['id']}", json={"location": "BLR"}, headers=h)
@@ -60,19 +60,19 @@ def test_application_validation(client, user, company):
     assert r.status_code == 422
 
 
-def test_company_delete_blocked_while_referenced(client, user, company):
+def test_company_delete_blocked_while_referenced(client, user, admin, company):
     h = user["headers"]
     a = client.post("/applications", json={"company_id": company["id"]}, headers=h).json()
-    assert client.delete(f"/companies/{company['id']}", headers=h).status_code == 409
+    assert client.delete(f"/companies/{company['id']}", headers=admin["headers"]).status_code == 409
     client.delete(f"/applications/{a['id']}", headers=h)
-    assert client.delete(f"/companies/{company['id']}", headers=h).status_code == 204
+    assert client.delete(f"/companies/{company['id']}", headers=admin["headers"]).status_code == 204
 
 
 def test_applications_list_only_own(client, user, company):
     # A second user sees none of the first user's applications.
     other_email = f"{PREFIX}{uuid.uuid4().hex[:8]}@example.com"
     client.post("/auth/register", json={"name": PREFIX + "o", "email": other_email, "password": "password123"})
-    tok = client.post("/auth/login", params={"email": other_email, "password": "password123"}).json()["access_token"]
+    tok = client.post("/auth/login", json={"email": other_email, "password": "password123"}).json()["access_token"]
     client.post("/applications", json={"company_id": company["id"]}, headers=user["headers"])
     assert client.get("/applications", headers={"Authorization": "Bearer " + tok}).json() == []
 
@@ -231,3 +231,148 @@ def test_deleting_application_with_rounds_removes_them(client, user, company):
     client.put(f"/applications/{a['id']}", json={"round_id": rnd["id"]}, headers=h)
     assert client.delete(f"/applications/{a['id']}", headers=h).status_code == 204
     assert client.get(f"/applications/{a['id']}/rounds", headers=h).status_code == 404
+
+
+# ---- roles / RBAC (CPT-33..38, CPT-46, CPT-47) ----
+
+from sqlalchemy import select as _select  # noqa: E402
+from sqlalchemy import update as _update  # noqa: E402
+
+from app.database.connection import SessionLocal  # noqa: E402
+from app.models.user import User  # noqa: E402
+from app.scripts import bootstrap_admin  # noqa: E402
+
+
+def _db_role(email):
+    db = SessionLocal()
+    try:
+        return db.execute(_select(User.role).where(User.email == email)).scalar_one()
+    finally:
+        db.close()
+
+
+def _set_db_role(email, role):
+    db = SessionLocal()
+    try:
+        db.execute(_update(User).where(User.email == email).values(role=role))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _claims(token):
+    from jose import jwt
+    from app.core.config import settings
+    return jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+
+
+def test_register_always_creates_user_even_if_role_sent(client):
+    email = f"{PREFIX}{uuid.uuid4().hex[:8]}@example.com"
+    r = client.post("/auth/register", json={"name": PREFIX + "x", "email": email, "password": "password123",
+                                            "role": "ADMIN", "is_admin": True})
+    assert r.status_code == 200
+    assert _db_role(email) == "USER"
+
+
+def test_me_includes_role_and_token_has_role_claim(client, user, admin):
+    me = client.get("/users/me", headers=user["headers"]).json()
+    assert me["role"] == "USER" and {"id", "name", "email"} <= set(me)
+    assert client.get("/users/me", headers=admin["headers"]).json()["role"] == "ADMIN"
+    assert _claims(admin["headers"]["Authorization"].split()[1])["role"] == "ADMIN"
+    assert _claims(user["headers"]["Authorization"].split()[1])["role"] == "USER"
+
+
+def test_login_accepts_json_body_and_rejects_bad_credentials(client, user):
+    r = client.post("/auth/login", json={"email": user["email"], "password": user["password"]})
+    assert r.status_code == 200 and r.json()["access_token"]
+    assert client.post("/auth/login", json={"email": user["email"], "password": "nope"}).status_code == 401
+    assert client.post("/auth/login", json={"email": PREFIX + "none@example.com", "password": "x"}).status_code == 401
+    # credentials are no longer accepted in the query string
+    assert client.post("/auth/login", params={"email": user["email"], "password": user["password"]}).status_code == 422
+
+
+def test_user_can_list_but_not_write_companies(client, user, company):
+    h = user["headers"]
+    assert client.get("/companies", headers=h).status_code == 200
+    assert client.get(f"/companies/{company['id']}", headers=h).status_code == 200
+    assert client.post("/companies", json={"name": PREFIX + "n", "role": "r"}, headers=h).status_code == 403
+    assert client.put(f"/companies/{company['id']}", json={"location": "X"}, headers=h).status_code == 403
+    assert client.delete(f"/companies/{company['id']}", headers=h).status_code == 403
+    assert client.get(f"/companies/{company['id']}", headers=h).json()["location"] is None  # unchanged
+
+
+def test_admin_company_crud(client, admin):
+    h = admin["headers"]
+    r = client.post("/companies", json={"name": PREFIX + "AdminCo", "role": "QA"}, headers=h)
+    assert r.status_code == 201
+    cid = r.json()["id"]
+    assert client.put(f"/companies/{cid}", json={"location": "PUNE"}, headers=h).json()["location"] == "PUNE"
+    assert client.delete(f"/companies/{cid}", headers=h).status_code == 204
+    assert client.get(f"/companies/{cid}", headers=h).status_code == 404
+
+
+def test_company_writes_require_authentication(client, company):
+    assert client.post("/companies", json={"name": "x", "role": "y"}).status_code == 401
+    assert client.delete(f"/companies/{company['id']}").status_code == 401
+
+
+def test_admin_has_no_access_to_other_users_applications_or_rounds(client, user, admin, company):
+    a = client.post("/applications", json={"company_id": company["id"]}, headers=user["headers"]).json()
+    rnd = client.post(f"/applications/{a['id']}/rounds", json={"round_name": "R1"}, headers=user["headers"]).json()
+    ha = admin["headers"]
+    url = f"/applications/{a['id']}"
+    assert client.get(url, headers=ha).status_code == 403
+    assert client.put(url, json={"notes": "x"}, headers=ha).status_code == 403
+    assert client.delete(url, headers=ha).status_code == 403
+    assert client.get(url + "/rounds", headers=ha).status_code == 403
+    assert client.post(url + "/rounds", json={"round_name": "x"}, headers=ha).status_code == 403
+    assert client.put(f"{url}/rounds/{rnd['id']}", json={"status": "FAILED"}, headers=ha).status_code == 403
+    assert client.delete(f"{url}/rounds/{rnd['id']}", headers=ha).status_code == 403
+    assert client.get(f"/applications/{uuid.uuid4()}", headers=ha).status_code == 404
+    assert client.get("/applications", headers=ha).json() == []  # only the admin's own
+    assert client.get(url, headers=user["headers"]).json() == a  # unchanged
+
+
+def test_role_is_read_from_db_not_from_stale_token(client, admin):
+    # the token still carries role=ADMIN, but after demotion in the DB the server must refuse writes
+    _set_db_role(admin["email"], "USER")
+    r = client.post("/companies", json={"name": PREFIX + "stale", "role": "r"}, headers=admin["headers"])
+    assert r.status_code == 403
+
+
+def test_bootstrap_promotes_existing_user_only(client, user):
+    assert _db_role(user["email"]) == "USER"
+    db = SessionLocal()
+    try:
+        assert bootstrap_admin.promote(db, PREFIX + "missing@example.com") is False
+        assert bootstrap_admin.promote(db, user["email"]) is True
+    finally:
+        db.close()
+    assert _db_role(user["email"]) == "ADMIN"
+    # a fresh login now carries the ADMIN claim and /users/me reports it
+    r = client.post("/auth/login", json={"email": user["email"], "password": user["password"]})
+    h = {"Authorization": "Bearer " + r.json()["access_token"]}
+    assert client.get("/users/me", headers=h).json()["role"] == "ADMIN"
+
+
+def test_bootstrap_command_line(client, user):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    base = [sys.executable, "-m", "app.scripts.bootstrap_admin"]
+    ok = subprocess.run(base + [user["email"]], cwd=root, env=dict(os.environ), capture_output=True, text=True)
+    assert ok.returncode == 0, ok.stderr[-300:]
+    assert _db_role(user["email"]) == "ADMIN"
+    missing = subprocess.run(base + [PREFIX + "no@example.com"], cwd=root, env=dict(os.environ),
+                             capture_output=True, text=True)
+    assert missing.returncode == 1
+
+
+def test_no_public_endpoint_can_promote(client, user):
+    h = user["headers"]
+    for method, path_ in [("post", "/admin/bootstrap"), ("post", "/auth/promote"), ("put", "/users/me")]:
+        r = getattr(client, method)(path_, json={"role": "ADMIN"}, headers=h)
+        assert r.status_code in (404, 405)
+    assert _db_role(user["email"]) == "USER"

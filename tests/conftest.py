@@ -7,7 +7,7 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret")
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from app.database.connection import SessionLocal
 from app.main import app
@@ -49,7 +49,7 @@ def _register_and_login(client):
     password = "password123"
     r = client.post("/auth/register", json={"name": PREFIX + "user", "email": email, "password": password})
     assert r.status_code == 200, r.text
-    r = client.post("/auth/login", params={"email": email, "password": password})
+    r = client.post("/auth/login", json={"email": email, "password": password})
     assert r.status_code == 200, r.text
     return {"email": email, "password": password,
             "headers": {"Authorization": "Bearer " + r.json()["access_token"]}}
@@ -65,8 +65,28 @@ def other_user(client):
     return _register_and_login(client)
 
 
+def _make_admin(client):
+    """Register a prefixed test user, promote it with a direct DB update (never via the API)
+    and log in again so the token carries the ADMIN role claim."""
+    u = _register_and_login(client)
+    db = SessionLocal()
+    try:
+        db.execute(update(User).where(User.email == u["email"]).values(role="ADMIN"))
+        db.commit()
+    finally:
+        db.close()
+    r = client.post("/auth/login", json={"email": u["email"], "password": u["password"]})
+    u["headers"] = {"Authorization": "Bearer " + r.json()["access_token"]}
+    return u
+
+
 @pytest.fixture()
-def company(client, user):
-    r = client.post("/companies", json={"name": PREFIX + "Acme", "role": "SDE"}, headers=user["headers"])
+def admin(client):
+    return _make_admin(client)
+
+
+@pytest.fixture()
+def company(client, admin):
+    r = client.post("/companies", json={"name": PREFIX + "Acme", "role": "SDE"}, headers=admin["headers"])
     assert r.status_code == 201, r.text
     return r.json()

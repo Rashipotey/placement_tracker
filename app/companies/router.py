@@ -1,7 +1,7 @@
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_admin
 from app.database.connection import get_db
 from app.models.application import Application
 from app.models.company import Company
@@ -24,7 +24,7 @@ def list_companies(db: Session = Depends(get_db)):
     return db.query(Company).all()
 
 
-@router.post("", response_model=CompanyRead, status_code=201)
+@router.post("", response_model=CompanyRead, status_code=201, dependencies=[Depends(require_admin)])
 def create_company(data: CompanyCreate, db: Session = Depends(get_db)):
     company = Company(**data.model_dump())
     db.add(company)
@@ -38,7 +38,7 @@ def get_company(company_id: UUID, db: Session = Depends(get_db)):
     return get_company_or_404(db, company_id)
 
 
-@router.put("/{company_id}", response_model=CompanyRead)
+@router.put("/{company_id}", response_model=CompanyRead, dependencies=[Depends(require_admin)])
 def update_company(company_id: UUID, data: CompanyUpdate, db: Session = Depends(get_db)):
     company = get_company_or_404(db, company_id)
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -48,7 +48,7 @@ def update_company(company_id: UUID, data: CompanyUpdate, db: Session = Depends(
     return company
 
 
-@router.delete("/{company_id}", status_code=204)
+@router.delete("/{company_id}", status_code=204, dependencies=[Depends(require_admin)])
 def delete_company(company_id: UUID, db: Session = Depends(get_db)):
     company = get_company_or_404(db, company_id)
     if db.query(Application).filter(Application.company_id == company_id).first():
