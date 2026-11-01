@@ -13,16 +13,13 @@ router = APIRouter(prefix="/applications", tags=["Applications"])
 
 
 def get_owned_application(db: Session, application_id: UUID, user: User) -> Application:
-    # Missing and not-owned currently share one response. The status code for
-    # not-owned (CPT-11 says 403, LLD says 404) is an open question; this is the
-    # single place to change it.
-    application = (
-        db.query(Application)
-        .filter(Application.id == application_id, Application.user_id == user.id)
-        .first()
-    )
+    # Missing -> 404; exists but owned by another user -> 403 (user decision,
+    # CPT-11). The LLD on Confluence still says 404 for not-owned.
+    application = db.query(Application).filter(Application.id == application_id).first()
     if application is None:
         raise HTTPException(status_code=404, detail="Application not found")
+    if application.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not allowed to access this application")
     return application
 
 

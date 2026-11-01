@@ -44,8 +44,7 @@ def cleanup_test_records():
         db.close()
 
 
-@pytest.fixture()
-def user(client):
+def _register_and_login(client):
     email = f"{PREFIX}{uuid.uuid4().hex[:8]}@example.com"
     password = "password123"
     r = client.post("/auth/register", json={"name": PREFIX + "user", "email": email, "password": password})
@@ -54,6 +53,16 @@ def user(client):
     assert r.status_code == 200, r.text
     return {"email": email, "password": password,
             "headers": {"Authorization": "Bearer " + r.json()["access_token"]}}
+
+
+@pytest.fixture()
+def user(client):
+    return _register_and_login(client)
+
+
+@pytest.fixture()
+def other_user(client):
+    return _register_and_login(client)
 
 
 @pytest.fixture()
