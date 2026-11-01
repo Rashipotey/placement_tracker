@@ -11,3 +11,9 @@ class Application(Base):
     company_id=Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
     status=Column(String, nullable=False, default="APPLIED")
     notes=Column(String)
+    # The application's current round; circular FK with rounds.application_id.
+    round_id=Column(
+        UUID(as_uuid=True),
+        ForeignKey("rounds.id", use_alter=True, name="fk_applications_round_id", ondelete="SET NULL"),
+        nullable=True,
+    )

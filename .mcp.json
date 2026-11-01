@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "atlassian": {
+      "type": "stdio",
+      "command": "codemie-mcp-proxy",
+      "args": [
+        "https://mcp.atlassian.com/v1/mcp"
+      ],
+      "env": {}
+    }
+  }
+}
