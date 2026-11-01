@@ -26,10 +26,10 @@ Baseline from `main` (commit 884318f), Jira `CPT`, and Confluence space `capston
 ## CPT-2 Frontend
 | Req | Artifact | Status | Notes |
 |---|---|---|---|
-| CPT-17 scaffold + auth-guarded routes | Jira; HLD §3.1 | Done | Vite + React + react-router-dom (user-approved) in `frontend/`; `npm run build` succeeds; headless Chrome shows the login page when opening `/applications` without a token |
-| CPT-18 / CPT-8 register/login/logout, localStorage token, Bearer header, 401 → login | Jira; LLD §5; Wireframes 2–3 | Partial | implemented and builds; not exercised end-to-end in a browser against the backend (no browser automation available); the backend endpoints it calls are covered by pytest |
-| CPT-19 applications list (loading/empty/error, optional status filter) | Jira; Wireframes 4 | Partial | implemented and builds; not exercised in a browser |
-| CPT-20 create/edit form + delete confirm | Jira; Wireframes 5–6 | Partial | implemented (company dropdown from `GET /companies`, no "+ Add Company") and builds; not exercised in a browser |
+| CPT-17 scaffold + auth-guarded routes | Jira; HLD §3.1 | Done | Vite + React + react-router-dom (user-approved) in `frontend/`; build OK; Selenium: unauthenticated `/applications` redirects to `/login`, and again after logout |
+| CPT-18 / CPT-8 register/login/logout, localStorage token, Bearer header, 401 → login | Jira; LLD §5; Wireframes 2–3 | Done | Selenium (Edge headless, real Vite + FastAPI): register -> login, token stored, logout clears it. Not browser-tested: 401-on-expired-token redirect path and client-side validation messages |
+| CPT-19 applications list (loading/empty/error, optional status filter) | Jira; Wireframes 4 | Done | Selenium: empty state, row render with company/role/status, status filter. Loading and error/Retry states not browser-tested |
+| CPT-20 create/edit form + delete confirm | Jira; Wireframes 5–6 | Done | Selenium: create, edit (prefill, status change), delete with Cancel then confirm. Form inline validation messages not browser-tested |
 | CPT-26 CORS (prerequisite for browser calls) | LLD §6 | Done | env-configurable `CORS_ORIGINS`; allowed origin gets header, disallowed does not, preflight with Authorization OK (curl-verified) |
 | Rounds UI | HLD §5.4 | Out of scope | no Jira story |
 
@@ -47,3 +47,5 @@ Baseline from `main` (commit 884318f), Jira `CPT`, and Confluence space `capston
 5. Test database: user explicitly overrode the dev-database rule for this run; tests use the `placement_tracker` DB with prefixed records and targeted cleanup.
 6. Provisional, awaiting review: `bcrypt==4.0.1` pin (verified need: with bcrypt 5.0.0 `POST /auth/register` raised `ValueError: password cannot be longer than 72 bytes` inside passlib 1.7.4's backend self-test) and `extra="ignore"` in settings (verified need: the original `Settings` raised `extra_forbidden` on the unrelated `GITHUB_OKEN` key in `.env`, so the app could not start).
 7. `.env.example` in the working tree was modified outside this run (`DATABASE_URL` now `postgres:postgres@...`); not committed.
+8. Logging: no logging requirement found in Jira (CPT-1..11, CPT-26 read in full; a project text search for logging/logger/audit/observability matched only CPT-8 via the phrase "log in"), the four Confluence pages (read in full; CQL matches on HLD/Wireframes are "login" stemming), or `docs/implementation-plan.md` (no match). None added.
+9. E2E: `tests/e2e/test_e2e.py` (opt-in `E2E=1`, Selenium + Edge) - 6 scenarios pass; clean fresh-venv run (outside the repo) of the full suite: 16 passed.

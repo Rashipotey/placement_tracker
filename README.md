@@ -40,6 +40,14 @@ pytest
 
 The tests use the database from `DATABASE_URL` in `.env` (there is no separate test database). Every record they create carries a unique `pytest_<random>_` prefix and only those records are deleted at the end of the run, so do not point `DATABASE_URL` at a database where that is unacceptable. If `JWT_SECRET_KEY` is not set, the tests use a fixed test-only value.
 
+Browser end-to-end tests (Selenium with Edge; the driver is fetched by Selenium Manager) are opt-in and start the API on port 8000 and the Vite dev server on port 5173 (both must be free):
+
+```
+E2E=1 pytest tests/e2e
+```
+
+On Windows PowerShell use `$env:E2E=1; pytest tests/e2e`. `npm install` must have been run in `frontend/` first.
+
 ## Frontend
 
 ```
