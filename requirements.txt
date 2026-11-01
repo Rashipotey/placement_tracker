@@ -6,3 +6,5 @@ python-jose
 passlib[bcrypt]
 python-multipart
 python-settings
+pydantic-settings
+email-validator
