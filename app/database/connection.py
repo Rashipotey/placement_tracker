@@ -1,15 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from pydantic_settings import BaseSettings
+from app.core.config import settings
 
-class Settings(BaseSettings):
-    DATABASE_URL:str
-    JWT_ALGORITHM:str
-    
-    class Config:
-        env_file=".env" 
-        
-settings=Settings()
 engine=create_engine(settings.DATABASE_URL)
 SessionLocal=sessionmaker(
     autocommit=False,
