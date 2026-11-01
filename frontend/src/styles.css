@@ -1,0 +1,159 @@
+:root {
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --text: #1c2430;
+  --muted: #5b6676;
+  --border: #d5dbe5;
+  --primary: #2457d6;
+  --primary-dark: #1a42a6;
+  --danger: #c62828;
+  --danger-bg: #fdecea;
+  --success: #1b6e3c;
+  --success-bg: #e6f4ea;
+  --info-bg: #eaf0fd;
+  --radius: 8px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.45;
+}
+
+h1, h2, h3 { margin: 0 0 12px; }
+a { color: var(--primary); }
+
+/* layout */
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.brand { font-weight: 700; }
+.nav { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.nav a { text-decoration: none; font-weight: 500; }
+.nav a.active { text-decoration: underline; }
+.who { color: var(--muted); font-size: 0.9rem; }
+
+.container {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.auth-card { max-width: 400px; margin: 32px auto; }
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.page-head h2 { margin: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* forms */
+.field { display: block; margin-bottom: 12px; }
+.field > span { display: block; font-weight: 600; margin-bottom: 4px; }
+input, select, textarea {
+  width: 100%;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+}
+input:focus, select:focus, textarea:focus, .btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+.filter { max-width: 260px; margin-bottom: 12px; }
+
+/* buttons */
+.btn {
+  display: inline-block;
+  font: inherit;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  text-decoration: none;
+}
+.btn:hover { background: #eef1f6; }
+.btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-danger { color: var(--danger); border-color: var(--danger); }
+.btn-danger:hover { background: var(--danger-bg); }
+.btn-sm { padding: 4px 10px; font-size: 0.9rem; }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* feedback */
+.alert, .notice {
+  padding: 10px 12px;
+  border-radius: 6px;
+  margin: 0 0 12px;
+  border: 1px solid transparent;
+}
+.alert { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+.notice { background: var(--success-bg); color: var(--success); border-color: var(--success); }
+.empty { background: var(--info-bg); padding: 12px; border-radius: 6px; }
+.loading { color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.muted { color: var(--muted); }
+
+/* tables */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { background: #eef1f6; font-weight: 600; white-space: nowrap; }
+td.row-actions { white-space: nowrap; }
+
+/* confirm dialog */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 10;
+}
+.dialog { max-width: 360px; width: 100%; }
+
+@media (max-width: 600px) {
+  .container { padding: 12px; }
+  .page-head { flex-direction: column; align-items: stretch; }
+  .btn { width: auto; }
+  .filter { max-width: none; }
+}

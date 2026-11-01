@@ -5,16 +5,33 @@ export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 
+// Turn FastAPI error bodies (string detail or 422 list) into a readable message.
+function messageFrom(data, status) {
+  const d = data?.detail;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) {
+    return d.map((e) => `${(e.loc || []).slice(1).join(".") || "input"}: ${e.msg}`).join("; ");
+  }
+  return status >= 500 ? "Server error, please try again" : "Request failed";
+}
+
 async function request(method, path, body) {
   const headers = {};
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await fetch(BASE + path, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(BASE + path, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    const err = new Error("Cannot reach the server");
+    err.status = 0;
+    throw err;
+  }
   if (res.status === 401 && !path.startsWith("/auth/")) {
     // Expired/invalid token: clear it and go to login (LLD section 5).
     clearToken();
@@ -23,7 +40,7 @@ async function request(method, path, body) {
   }
   const data = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) {
-    const err = new Error(typeof data?.detail === "string" ? data.detail : "Request failed");
+    const err = new Error(messageFrom(data, res.status));
     err.status = res.status;
     throw err;
   }
@@ -32,10 +49,12 @@ async function request(method, path, body) {
 
 export const api = {
   register: (name, email, password) => request("POST", "/auth/register", { name, email, password }),
-  login: (email, password) =>
-    request("POST", `/auth/login?${new URLSearchParams({ email, password })}`),
+  login: (email, password) => request("POST", "/auth/login", { email, password }),
   me: () => request("GET", "/users/me"),
-  companies: () => request("GET", "/companies"),
+  listCompanies: () => request("GET", "/companies"),
+  createCompany: (data) => request("POST", "/companies", data),
+  updateCompany: (id, data) => request("PUT", `/companies/${id}`, data),
+  deleteCompany: (id) => request("DELETE", `/companies/${id}`),
   applications: (status) =>
     request("GET", "/applications" + (status ? `?${new URLSearchParams({ status })}` : "")),
   application: (id) => request("GET", `/applications/${id}`),
