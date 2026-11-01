@@ -39,3 +39,14 @@ pytest
 ```
 
 The tests use the database from `DATABASE_URL` in `.env` (there is no separate test database). Every record they create carries a unique `pytest_<random>_` prefix and only those records are deleted at the end of the run, so do not point `DATABASE_URL` at a database where that is unacceptable. If `JWT_SECRET_KEY` is not set, the tests use a fixed test-only value.
+
+## Frontend
+
+```
+cd frontend
+npm install
+npm run dev      # http://localhost:5173
+npm run build
+```
+
+The API URL defaults to `http://localhost:8000`; override it with `VITE_API_URL` (see `frontend/.env.example`). The backend must allow the frontend origin via `CORS_ORIGINS`.

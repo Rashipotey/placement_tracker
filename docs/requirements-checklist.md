@@ -26,22 +26,24 @@ Baseline from `main` (commit 884318f), Jira `CPT`, and Confluence space `capston
 ## CPT-2 Frontend
 | Req | Artifact | Status | Notes |
 |---|---|---|---|
-| CPT-17 scaffold + auth-guarded routes | Jira; HLD §3.1 | Blocked | no frontend tooling exists; needs user approval for build tool/dependencies |
-| CPT-18 / CPT-8 register/login/logout, localStorage token, Bearer header, 401 → login | Jira; LLD §5; Wireframes 2–3 | Blocked | |
-| CPT-19 applications list (loading/empty/error, optional status filter) | Jira; Wireframes 4 | Blocked | |
-| CPT-20 create/edit form + delete confirm | Jira; Wireframes 5–6 | Blocked | needs `GET /companies` |
+| CPT-17 scaffold + auth-guarded routes | Jira; HLD §3.1 | Done | Vite + React + react-router-dom (user-approved) in `frontend/`; `npm run build` succeeds; headless Chrome shows the login page when opening `/applications` without a token |
+| CPT-18 / CPT-8 register/login/logout, localStorage token, Bearer header, 401 → login | Jira; LLD §5; Wireframes 2–3 | Partial | implemented and builds; not exercised end-to-end in a browser against the backend (no browser automation available); the backend endpoints it calls are covered by pytest |
+| CPT-19 applications list (loading/empty/error, optional status filter) | Jira; Wireframes 4 | Partial | implemented and builds; not exercised in a browser |
+| CPT-20 create/edit form + delete confirm | Jira; Wireframes 5–6 | Partial | implemented (company dropdown from `GET /companies`, no "+ Add Company") and builds; not exercised in a browser |
 | CPT-26 CORS (prerequisite for browser calls) | LLD §6 | Done | env-configurable `CORS_ORIGINS`; allowed origin gets header, disallowed does not, preflight with Authorization OK (curl-verified) |
 | Rounds UI | HLD §5.4 | Out of scope | no Jira story |
 
 ## CPT-4 Tests
 | Req | Artifact | Status | Notes |
 |---|---|---|---|
-| CPT-24 pytest harness + isolated test DB | Jira; LLD §7 | Blocked | no safe test DB: `.env` DATABASE_URL points at the dev database `placement_tracker`; needs a dedicated DB from the user; no tests; pytest not installed in `.venv` |
-| CPT-11 tests: auth, `/users/me`, application CRUD, cross-user authorization | Jira; LLD §7 | Blocked | |
+| CPT-24 pytest harness + test DB | Jira; LLD §7 | Done | `tests/` + `requirements-dev.txt`; per user override, tests run against the dev DB `placement_tracker` (was empty, read-only inspection first); every record has a random `pytest_<id>_` prefix and only those are deleted at session end; verified all 4 tables had 0 rows after the run; no create_all/drop_all/truncate |
+| CPT-11 tests: auth, `/users/me`, application CRUD, rounds | Jira; LLD §7 | Partial | 10 tests pass; cross-user authorization (applications and rounds) NOT tested because 403 vs 404 is unresolved |
 
 ## Open questions
 1. Cross-user access status code: CPT-11 says 403; LLD §3.3/3.4 says 404.
 2. Stories outside the four epics (CPT-25, 27–32: Alembic, docker-compose, OpenAPI docs, `__pycache__` cleanup, CI) are out of scope unless approved.
 3. Frontend build tooling is not specified in the artifacts.
 4. PUT vs PATCH for updates: LLD lists both and marks PATCH optional.
-5. Test database: only the development database is configured; a dedicated test DB is required before CPT-4 tests are run.
+5. Test database: user explicitly overrode the dev-database rule for this run; tests use the `placement_tracker` DB with prefixed records and targeted cleanup.
+6. Provisional, awaiting review: `bcrypt==4.0.1` pin (verified need: with bcrypt 5.0.0 `POST /auth/register` raised `ValueError: password cannot be longer than 72 bytes` inside passlib 1.7.4's backend self-test) and `extra="ignore"` in settings (verified need: the original `Settings` raised `extra_forbidden` on the unrelated `GITHUB_OKEN` key in `.env`, so the app could not start).
+7. `.env.example` in the working tree was modified outside this run (`DATABASE_URL` now `postgres:postgres@...`); not committed.
