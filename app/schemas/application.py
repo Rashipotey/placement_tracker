@@ -13,6 +13,7 @@ class ApplicationCreate(BaseModel):
 
 class ApplicationUpdate(BaseModel):
     company_id: Optional[UUID] = None
+    round_id: Optional[UUID] = None
     status: Optional[ApplicationStatus] = None
     notes: Optional[str] = None
 
@@ -21,6 +22,7 @@ class ApplicationRead(BaseModel):
     id: UUID
     user_id: UUID
     company_id: UUID
+    round_id: Optional[UUID] = None
     status: str
     notes: Optional[str] = None
 

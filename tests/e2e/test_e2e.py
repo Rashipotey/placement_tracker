@@ -1,7 +1,7 @@
 """Browser end-to-end tests (Selenium + Edge/Chrome).
 
-Opt-in: set E2E=1. Starts uvicorn (:8000) and the Vite dev server (:5173) and
-stops them afterwards. Uses the configured DATABASE_URL; all records carry the
+Opt-in: set E2E=1. Starts uvicorn (E2E_API_PORT, default 8000) and the Vite dev
+server (E2E_WEB_PORT, default 5173) and stops them afterwards. Uses the configured DATABASE_URL; all records carry the
 unique PREFIX and are removed by the session cleanup in tests/conftest.py.
 """
 import os
@@ -26,8 +26,10 @@ from selenium.webdriver.support.ui import Select, WebDriverWait
 from tests.conftest import PREFIX
 
 ROOT = Path(__file__).resolve().parents[2]
-API = "http://localhost:8000"
-WEB = "http://localhost:5173"
+API_PORT = int(os.environ.get("E2E_API_PORT", "8000"))
+WEB_PORT = int(os.environ.get("E2E_WEB_PORT", "5173"))
+API = f"http://localhost:{API_PORT}"
+WEB = f"http://localhost:{WEB_PORT}"
 
 
 def _wait_http(url, seconds=60):
@@ -49,17 +51,18 @@ def _port_free(port):
 
 @pytest.fixture(scope="module")
 def servers():
-    assert _port_free(8000) and _port_free(5173), "ports 8000/5173 must be free"
+    assert _port_free(API_PORT) and _port_free(WEB_PORT), "e2e ports must be free"
     env = dict(os.environ)
+    env["CORS_ORIGINS"] = WEB
     env.setdefault("JWT_SECRET_KEY", "test-only-secret")
     api = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "app.main:app", "--port", "8000"],
+        [sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(API_PORT)],
         cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     npm = "npm.cmd" if os.name == "nt" else "npm"
     web = subprocess.Popen(
-        [npm, "run", "dev", "--", "--port", "5173", "--strictPort"],
-        cwd=ROOT / "frontend", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        [npm, "run", "dev", "--", "--port", str(WEB_PORT), "--strictPort"],
+        cwd=ROOT / "frontend", env=dict(env, VITE_API_URL=API), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     try:
         _wait_http(API + "/")
@@ -294,3 +297,93 @@ def test_11_invalid_token_clears_and_redirects(browser):
     d.get(WEB + "/applications")
     wait(d, lambda x: path(x) == "/login")
     assert d.execute_script("return localStorage.getItem('access_token')") is None
+
+
+# ---- rounds UI and the application's current round (user-approved requirement) ----
+
+@pytest.fixture(scope="module")
+def round_app(servers, creds, company):
+    import json
+    def call(method, p, body=None, token=None):
+        h = {"Content-Type": "application/json"}
+        if token:
+            h["Authorization"] = "Bearer " + token
+        r = urllib.request.Request(API + p, method=method, headers=h,
+                                   data=json.dumps(body).encode() if body is not None else None)
+        return json.loads(urllib.request.urlopen(r).read().decode())
+    tok = call("POST", "/auth/login?" + urllib.parse.urlencode(
+        {"email": creds["email"], "password": creds["password"]}))["access_token"]
+    a = call("POST", "/applications", {"company_id": company["id"], "notes": "rounds app"}, tok)
+    return {"app": a, "token": tok, "call": call}
+
+
+def test_12_create_round(browser, creds, round_app):
+    d = browser
+    login(d, creds)
+    wait(d, lambda x: len(rows(x)) >= 1)
+    rows(d)[0].find_element(By.LINK_TEXT, "Rounds").click()
+    wait(d, lambda x: x.current_url.endswith("/rounds"))
+    text_present(d, "This application has no rounds yet")
+    d.find_element(By.XPATH, "//button[text()='+ New round']").click()
+    d.find_element(By.XPATH, "//button[text()='Save']").click()
+    assert alert_text(d) == "Round name is required"
+    d.find_element(By.XPATH, "//label[contains(.,'Round name')]//input").send_keys(PREFIX + "Tech1")
+    d.find_element(By.TAG_NAME, "textarea").send_keys("went well")
+    d.find_element(By.XPATH, "//button[text()='Save']").click()
+    wait(d, lambda x: len(rows(x)) == 1)
+    assert PREFIX + "Tech1" in rows(d)[0].text and "PENDING" in rows(d)[0].text
+    assert "went well" in rows(d)[0].text
+
+
+def test_13_edit_round(browser):
+    d = browser
+    rows(d)[0].find_element(By.XPATH, ".//button[text()='Edit']").click()
+    name = d.find_element(By.XPATH, "//label[contains(.,'Round name')]//input")
+    wait(d, lambda x: name.get_attribute("value") == PREFIX + "Tech1")
+    name.clear()
+    name.send_keys(PREFIX + "Tech1b")
+    Select(d.find_element(By.XPATH, "//form//select")).select_by_value("PASSED")
+    d.find_element(By.XPATH, "//button[text()='Save']").click()
+    wait(d, lambda x: len(rows(x)) == 1 and PREFIX + "Tech1b" in rows(x)[0].text)
+    assert "PASSED" in rows(d)[0].text
+
+
+def test_14_set_and_clear_current_round(browser, round_app):
+    d = browser
+    aid = round_app["app"]["id"]
+    d.get(WEB + f"/applications/{aid}/edit")
+    sel_loc = (By.XPATH, "//label[contains(.,'Current round')]//select")
+    wait(d, lambda x: len(Select(x.find_element(*sel_loc)).options) == 2)
+    Select(d.find_element(*sel_loc)).select_by_visible_text(PREFIX + "Tech1b")
+    d.find_element(By.XPATH, "//button[text()='Save']").click()
+    wait(d, lambda x: path(x) == "/applications")
+    got = round_app["call"]("GET", f"/applications/{aid}", token=round_app["token"])
+    assert got["round_id"] is not None
+    # rounds page marks it as current
+    d.get(WEB + f"/applications/{aid}/rounds")
+    wait(d, lambda x: "(current)" in x.find_element(By.TAG_NAME, "body").text)
+    # clear it again
+    d.get(WEB + f"/applications/{aid}/edit")
+    wait(d, lambda x: Select(x.find_element(*sel_loc)).first_selected_option.text == PREFIX + "Tech1b")
+    Select(d.find_element(*sel_loc)).select_by_value("")
+    d.find_element(By.XPATH, "//button[text()='Save']").click()
+    wait(d, lambda x: path(x) == "/applications")
+    assert round_app["call"]("GET", f"/applications/{aid}", token=round_app["token"])["round_id"] is None
+
+
+def test_15_delete_round_clears_current_round(browser, round_app):
+    d = browser
+    aid = round_app["app"]["id"]
+    rid = round_app["call"]("GET", f"/applications/{aid}/rounds", token=round_app["token"])[0]["id"]
+    round_app["call"]("PUT", f"/applications/{aid}", {"round_id": rid}, round_app["token"])
+    d.get(WEB + f"/applications/{aid}/rounds")
+    wait(d, lambda x: len(rows(x)) == 1)
+    rows(d)[0].find_element(By.XPATH, ".//button[text()='Delete']").click()
+    dialog = wait(d, EC.visibility_of_element_located((By.CSS_SELECTOR, "[role=dialog]")))
+    dialog.find_element(By.XPATH, ".//button[text()='Cancel']").click()
+    wait(d, EC.invisibility_of_element_located((By.CSS_SELECTOR, "[role=dialog]")))
+    assert len(rows(d)) == 1
+    rows(d)[0].find_element(By.XPATH, ".//button[text()='Delete']").click()
+    d.find_element(By.CSS_SELECTOR, "[role=dialog]").find_element(By.XPATH, ".//button[text()='Delete']").click()
+    text_present(d, "This application has no rounds yet")
+    assert round_app["call"]("GET", f"/applications/{aid}", token=round_app["token"])["round_id"] is None

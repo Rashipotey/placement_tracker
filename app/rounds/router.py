@@ -82,8 +82,11 @@ def delete_round(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    get_owned_application(db, application_id, current_user)
+    application = get_owned_application(db, application_id, current_user)
     round_ = get_round_or_404(db, application_id, round_id)
+    if application.round_id == round_.id:
+        application.round_id = None
+        db.flush()
     db.delete(round_)
     db.commit()
     return Response(status_code=204)

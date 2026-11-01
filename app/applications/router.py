@@ -6,6 +6,7 @@ from app.auth.dependencies import get_current_user
 from app.database.connection import get_db
 from app.models.application import Application
 from app.models.company import Company
+from app.models.round import Round
 from app.models.user import User
 from app.schemas.application import ApplicationCreate, ApplicationRead, ApplicationUpdate
 
@@ -74,6 +75,15 @@ def update_application(
     changes = data.model_dump(exclude_unset=True)
     if changes.get("company_id") is not None:
         require_company(db, changes["company_id"])
+    if changes.get("round_id") is not None:
+        # The current round must be one of this application's own rounds.
+        own_round = (
+            db.query(Round)
+            .filter(Round.id == changes["round_id"], Round.application_id == application.id)
+            .first()
+        )
+        if own_round is None:
+            raise HTTPException(status_code=422, detail="Round does not belong to this application")
     for field, value in changes.items():
         setattr(application, field, value)
     db.commit()
@@ -88,6 +98,10 @@ def delete_application(
     current_user: User = Depends(get_current_user),
 ):
     application = get_owned_application(db, application_id, current_user)
+    # Rounds belong to the application: clear the current round, then remove them.
+    application.round_id = None
+    db.flush()
+    db.query(Round).filter(Round.application_id == application.id).delete()
     db.delete(application)
     db.commit()
     return Response(status_code=204)

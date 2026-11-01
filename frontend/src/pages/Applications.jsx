@@ -63,6 +63,7 @@ export default function Applications() {
                 <td>{a.status}</td>
                 <td>
                   <Link to={`/applications/${a.id}/edit`}>Edit</Link>{" "}
+                  <Link to={`/applications/${a.id}/rounds`}>Rounds</Link>{" "}
                   <button onClick={() => setToDelete(a)}>Delete</button>
                 </td>
               </tr>

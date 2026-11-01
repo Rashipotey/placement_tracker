@@ -5,6 +5,7 @@ import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import Applications from "./pages/Applications.jsx";
 import ApplicationForm from "./pages/ApplicationForm.jsx";
+import Rounds from "./pages/Rounds.jsx";
 
 function Shell() {
   const navigate = useNavigate();
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="/applications" element={<Applications />} />
         <Route path="/applications/new" element={<ApplicationForm />} />
         <Route path="/applications/:id/edit" element={<ApplicationForm />} />
+        <Route path="/applications/:id/rounds" element={<Rounds />} />
       </Route>
       <Route path="*" element={<Navigate to="/applications" replace />} />
     </Routes>

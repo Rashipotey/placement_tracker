@@ -9,6 +9,8 @@ export default function ApplicationForm() {
   const [companyId, setCompanyId] = useState("");
   const [status, setStatus] = useState("APPLIED");
   const [notes, setNotes] = useState("");
+  const [rounds, setRounds] = useState([]);
+  const [roundId, setRoundId] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -19,8 +21,10 @@ export default function ApplicationForm() {
           setCompanyId(a.company_id);
           setStatus(a.status);
           setNotes(a.notes || "");
+          setRoundId(a.round_id || "");
         })
         .catch(() => setError("Unable to load application"));
+      api.rounds(id).then(setRounds).catch(() => setError("Unable to load rounds"));
     }
   }, [id]);
 
@@ -31,7 +35,7 @@ export default function ApplicationForm() {
     if (!status) return setError("Status is required");
     const data = { company_id: companyId, status, notes: notes || null };
     try {
-      if (id) await api.updateApplication(id, data);
+      if (id) await api.updateApplication(id, { ...data, round_id: roundId || null });
       else await api.createApplication(data);
       navigate("/applications");
     } catch {
@@ -57,6 +61,16 @@ export default function ApplicationForm() {
           </select>
         </label>
       </p>
+      {id && (
+        <p>
+          <label>Current round{" "}
+            <select value={roundId} onChange={(e) => setRoundId(e.target.value)}>
+              <option value="">None</option>
+              {rounds.map((r) => <option key={r.id} value={r.id}>{r.round_name}</option>)}
+            </select>
+          </label>
+        </p>
+      )}
       <p><label>Notes<br /><textarea rows={4} cols={50} value={notes} onChange={(e) => setNotes(e.target.value)} /></label></p>
       <button type="submit">Save</button>{" "}
       <button type="button" onClick={() => navigate("/applications")}>Cancel</button>

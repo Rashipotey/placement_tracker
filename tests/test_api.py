@@ -157,3 +157,77 @@ def test_round_under_wrong_application_returns_404(client, user, company):
 def test_unauthenticated_rounds_and_applications_return_401(client):
     assert client.get(f"/applications/{uuid.uuid4()}").status_code == 401
     assert client.get(f"/applications/{uuid.uuid4()}/rounds").status_code == 401
+
+
+# ---- application.round_id (user-approved: current round of an application) ----
+
+def _round(client, user, application_id, name="R1"):
+    r = client.post(f"/applications/{application_id}/rounds", json={"round_name": name}, headers=user["headers"])
+    assert r.status_code == 201
+    return r.json()
+
+
+def test_round_id_exposed_and_null_by_default(client, user, company):
+    a = _make_application(client, user, company)
+    assert a["round_id"] is None
+    assert client.get(f"/applications/{a['id']}", headers=user["headers"]).json()["round_id"] is None
+
+
+def test_set_and_clear_current_round(client, user, company):
+    h = user["headers"]
+    a = _make_application(client, user, company)
+    rnd = _round(client, user, a["id"])
+    r = client.put(f"/applications/{a['id']}", json={"round_id": rnd["id"]}, headers=h)
+    assert r.status_code == 200 and r.json()["round_id"] == rnd["id"]
+    assert client.get("/applications", headers=h).json()[0]["round_id"] == rnd["id"]
+    # other fields can be updated without touching round_id
+    r = client.put(f"/applications/{a['id']}", json={"status": "INTERVIEWING"}, headers=h)
+    assert r.json()["round_id"] == rnd["id"]
+    r = client.put(f"/applications/{a['id']}", json={"round_id": None}, headers=h)
+    assert r.status_code == 200 and r.json()["round_id"] is None
+
+
+def test_round_from_another_application_or_missing_is_rejected(client, user, company):
+    h = user["headers"]
+    a1 = _make_application(client, user, company)
+    a2 = _make_application(client, user, company)
+    foreign = _round(client, user, a2["id"])
+    assert client.put(f"/applications/{a1['id']}", json={"round_id": foreign["id"]}, headers=h).status_code == 422
+    assert client.put(f"/applications/{a1['id']}", json={"round_id": str(uuid.uuid4())}, headers=h).status_code == 422
+    assert client.get(f"/applications/{a1['id']}", headers=h).json()["round_id"] is None
+
+
+def test_create_ignores_round_id(client, user, company):
+    r = client.post("/applications", json={"company_id": company["id"], "round_id": str(uuid.uuid4())},
+                    headers=user["headers"])
+    assert r.status_code == 201 and r.json()["round_id"] is None
+
+
+def test_other_user_cannot_set_round_id(client, user, other_user, company):
+    a = _make_application(client, user, company)
+    rnd = _round(client, user, a["id"])
+    r = client.put(f"/applications/{a['id']}", json={"round_id": rnd["id"]}, headers=other_user["headers"])
+    assert r.status_code == 403
+    assert client.get(f"/applications/{a['id']}", headers=user["headers"]).json()["round_id"] is None
+
+
+def test_deleting_current_round_nulls_round_id(client, user, company):
+    h = user["headers"]
+    a = _make_application(client, user, company)
+    current = _round(client, user, a["id"], "current")
+    other = _round(client, user, a["id"], "other")
+    client.put(f"/applications/{a['id']}", json={"round_id": current["id"]}, headers=h)
+    # deleting a non-current round leaves round_id alone
+    assert client.delete(f"/applications/{a['id']}/rounds/{other['id']}", headers=h).status_code == 204
+    assert client.get(f"/applications/{a['id']}", headers=h).json()["round_id"] == current["id"]
+    assert client.delete(f"/applications/{a['id']}/rounds/{current['id']}", headers=h).status_code == 204
+    assert client.get(f"/applications/{a['id']}", headers=h).json()["round_id"] is None
+
+
+def test_deleting_application_with_rounds_removes_them(client, user, company):
+    h = user["headers"]
+    a = _make_application(client, user, company)
+    rnd = _round(client, user, a["id"])
+    client.put(f"/applications/{a['id']}", json={"round_id": rnd["id"]}, headers=h)
+    assert client.delete(f"/applications/{a['id']}", headers=h).status_code == 204
+    assert client.get(f"/applications/{a['id']}/rounds", headers=h).status_code == 404

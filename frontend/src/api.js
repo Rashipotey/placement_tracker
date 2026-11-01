@@ -42,6 +42,11 @@ export const api = {
   createApplication: (data) => request("POST", "/applications", data),
   updateApplication: (id, data) => request("PUT", `/applications/${id}`, data),
   deleteApplication: (id) => request("DELETE", `/applications/${id}`),
+  rounds: (appId) => request("GET", `/applications/${appId}/rounds`),
+  createRound: (appId, data) => request("POST", `/applications/${appId}/rounds`, data),
+  updateRound: (appId, id, data) => request("PUT", `/applications/${appId}/rounds/${id}`, data),
+  deleteRound: (appId, id) => request("DELETE", `/applications/${appId}/rounds/${id}`),
 };
 
 export const STATUSES = ["APPLIED", "INTERVIEWING", "OFFER", "REJECTED"];
+export const ROUND_STATUSES = ["PENDING", "PASSED", "FAILED"];

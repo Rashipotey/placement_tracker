@@ -31,13 +31,23 @@ Baseline from `main` (commit 884318f), Jira `CPT`, and Confluence space `capston
 | CPT-19 applications list (loading/empty/error, optional status filter) | Jira; Wireframes 4 | Done | Selenium: loading ("Loading applications...", via 3s emulated latency), empty, rows, status filter, error ("Failed to load applications" + Retry via emulated offline, Retry recovers) |
 | CPT-20 create/edit form + delete confirm | Jira; Wireframes 5–6 | Done | Selenium: create, edit, delete Cancel/confirm, "Company is required", save failure banner "Unable to save application". "Status is required" is unreachable by design: the status select has no empty option (defaults to APPLIED) |
 | CPT-26 CORS (prerequisite for browser calls) | LLD §6 | Done | env-configurable `CORS_ORIGINS`; allowed origin gets header, disallowed does not, preflight with Authorization OK (curl-verified) |
-| Rounds UI | HLD §5.4 | Out of scope | no Jira story |
+| Rounds UI | HLD §5.4 | Superseded | now covered by the user-approved requirement below (section "User-approved additions") |
 
 ## CPT-4 Tests
 | Req | Artifact | Status | Notes |
 |---|---|---|---|
 | CPT-24 pytest harness + test DB | Jira; LLD §7 | Done | `tests/` + `requirements-dev.txt`; per user override, tests run against the dev DB `placement_tracker` (was empty, read-only inspection first); every record has a random `pytest_<id>_` prefix and only those are deleted at session end; verified all 4 tables had 0 rows after the run; no create_all/drop_all/truncate |
 | CPT-11 tests: auth, `/users/me`, application CRUD, cross-user authorization, rounds | Jira; LLD §7 | Done | 15 pytest tests + 1 opt-in e2e module; cross-user asserts 403 (user decision) |
+
+## User-approved additions (NOT yet in Jira or Confluence)
+User statement: "the application must have round_id and user must be able to create/edit/delete rounds", in both frontend and backend; recorded in the repo only (Jira and Confluence deliberately not edited). HLD §5.4 and the wireframes still exclude a rounds UI and need a documentation update by the user. Minimal interpretation used (correct me if wrong):
+| Req | Status | Notes |
+|---|---|---|
+| `applications.round_id` = the application's current round (nullable FK to `rounds.id`, `ON DELETE SET NULL`, `use_alter` for the circular FK) | Done | `create_all` DDL for a fresh DB checked with a mock PostgreSQL engine (CREATE TABLE then ALTER ADD CONSTRAINT); existing DB upgraded with an additive ALTER (see README "Upgrading an existing database"); row counts unchanged |
+| `ApplicationRead` exposes `round_id`; `ApplicationUpdate` accepts `round_id` (null clears); a round of another application or a nonexistent round -> 422; not accepted on create (no rounds exist yet; ignored) | Done | pytest verified |
+| Deleting the current round sets `round_id` to null; deleting an application also removes its rounds (previously a FK error, fixed because the UI now makes rounds common) | Done | pytest verified |
+| Not-owned -> 403 / missing -> 404 (Option A) preserved for setting `round_id` | Done | pytest verified |
+| Rounds UI: `/applications/:id/rounds` (list with loading/empty/error, create, edit round_name/status/feedback, delete with confirmation, "(current)" marker) and a "Current round" select on the application edit form | Done | Selenium verified (create, edit, set/clear current round, delete with Cancel and confirm) |
 
 ## Open questions
 1. RESOLVED by user decision (Option A): missing -> 404, owned by another user -> 403 (CPT-11). Confluence LLD §3.3/3.4/§4 still says 404 for not-owned and needs a documentation update by the user (not edited here).

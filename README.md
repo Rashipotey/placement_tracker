@@ -31,6 +31,21 @@ FastAPI + SQLAlchemy + PostgreSQL backend for tracking job applications.
 
    Tables are created on startup. Interactive API docs: http://localhost:8000/docs
 
+## Upgrading an existing database
+
+`Base.metadata.create_all` creates missing tables but does not add columns to existing ones. A database created before `applications.round_id` (the application's current round) existed needs this additive, non-destructive change (safe to run more than once; Alembic migrations are out of scope):
+
+```sql
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS round_id UUID;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_applications_round_id') THEN
+    ALTER TABLE applications ADD CONSTRAINT fk_applications_round_id
+      FOREIGN KEY (round_id) REFERENCES rounds (id) ON DELETE SET NULL;
+  END IF;
+END $$;
+```
+
 ## Tests
 
 ```
@@ -40,7 +55,7 @@ pytest
 
 The tests use the database from `DATABASE_URL` in `.env` (there is no separate test database). Every record they create carries a unique `pytest_<random>_` prefix and only those records are deleted at the end of the run, so do not point `DATABASE_URL` at a database where that is unacceptable. If `JWT_SECRET_KEY` is not set, the tests use a fixed test-only value.
 
-Browser end-to-end tests (Selenium with Edge; the driver is fetched by Selenium Manager) are opt-in and start the API on port 8000 and the Vite dev server on port 5173 (both must be free):
+Browser end-to-end tests (Selenium with Edge; the driver is fetched by Selenium Manager) are opt-in and start the API on port 8000 and the Vite dev server on port 5173 (both must be free; override with `E2E_API_PORT` / `E2E_WEB_PORT`):
 
 ```
 E2E=1 pytest tests/e2e
