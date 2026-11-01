@@ -205,3 +205,92 @@ def test_6_logout_then_protected_route_redirects(browser):
     assert d.execute_script("return localStorage.getItem('access_token')") is None
     d.get(WEB + "/applications")
     wait(d, lambda x: path(x) == "/login")
+
+
+# ---- states and validation messages (Wireframes 2-5, LLD section 5) ----
+
+def net(d, **cond):
+    base = {"offline": False, "latency": 0, "downloadThroughput": -1, "uploadThroughput": -1}
+    d.execute_cdp_cmd("Network.enable", {})
+    d.execute_cdp_cmd("Network.emulateNetworkConditions", {**base, **cond})
+
+
+def alert_text(d):
+    return wait(d, EC.visibility_of_element_located((By.CSS_SELECTOR, "[role=alert]"))).text
+
+
+def test_7_login_error_messages(browser, creds):
+    d = browser
+    d.get(WEB + "/login")
+    d.find_element(By.XPATH, "//button[text()='Log In']").click()
+    assert alert_text(d) == "Email is required"
+    d.find_element(By.CSS_SELECTOR, "input[type=email]").send_keys(creds["email"])
+    d.find_element(By.CSS_SELECTOR, "input[type=password]").send_keys("wrong-password")
+    d.find_element(By.XPATH, "//button[text()='Log In']").click()
+    wait(d, lambda x: alert_text(x) == "Invalid email or password")
+
+
+def test_8_register_validation_messages(browser, creds):
+    d = browser
+    d.get(WEB + "/register")
+    d.find_element(By.XPATH, "//label[contains(.,'Name')]//input").send_keys(PREFIX + "v")
+    d.find_element(By.XPATH, "//button[text()='Create Account']").click()
+    assert alert_text(d) == "Email is required"
+    d.find_element(By.CSS_SELECTOR, "input[type=email]").send_keys(creds["email"])
+    d.find_element(By.CSS_SELECTOR, "input[type=password]").send_keys("short")
+    d.find_element(By.XPATH, "//button[text()='Create Account']").click()
+    wait(d, lambda x: alert_text(x) == "Password must be at least 8 characters")
+    pw = d.find_element(By.CSS_SELECTOR, "input[type=password]")
+    pw.clear()
+    pw.send_keys("password123")
+    d.find_element(By.XPATH, "//button[text()='Create Account']").click()  # email already used
+    wait(d, lambda x: alert_text(x) == "Email already registered")
+
+
+def test_9_loading_and_error_states(browser, creds):
+    d = browser
+    login(d, creds)
+    try:
+        net(d, latency=3000)
+        d.get(WEB + "/applications")
+        text_present(d, "Loading applications...")
+        net(d)
+        wait(d, lambda x: "Loading applications..." not in x.find_element(By.TAG_NAME, "body").text, 15)
+
+        d.get(WEB + "/applications")
+        text_present(d, "You have no applications yet")
+        net(d, offline=True)
+        Select(d.find_element(By.TAG_NAME, "select")).select_by_value("OFFER")
+        text_present(d, "Failed to load applications")
+        retry = d.find_element(By.XPATH, "//button[text()='Retry']")
+        net(d)
+        retry.click()
+        text_present(d, "You have no applications yet")
+    finally:
+        net(d)
+
+
+def test_10_form_validation_and_save_error(browser, company):
+    d = browser
+    d.get(WEB + "/applications/new")
+    wait(d, lambda x: len(Select(x.find_elements(By.TAG_NAME, "select")[0]).options) > 1)
+    d.find_element(By.XPATH, "//button[text()='Save']").click()
+    assert alert_text(d) == "Company is required"
+    Select(d.find_elements(By.TAG_NAME, "select")[0]).select_by_value(company["id"])
+    try:
+        net(d, offline=True)
+        d.find_element(By.XPATH, "//button[text()='Save']").click()
+        wait(d, lambda x: alert_text(x) == "Unable to save application")
+    finally:
+        net(d)
+    d.find_element(By.XPATH, "//button[text()='Cancel']").click()
+    wait(d, lambda x: path(x) == "/applications")
+    text_present(d, "You have no applications yet")
+
+
+def test_11_invalid_token_clears_and_redirects(browser):
+    d = browser
+    d.execute_script("localStorage.setItem('access_token', 'not-a-valid-jwt')")
+    d.get(WEB + "/applications")
+    wait(d, lambda x: path(x) == "/login")
+    assert d.execute_script("return localStorage.getItem('access_token')") is None
