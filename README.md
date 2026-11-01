@@ -30,3 +30,12 @@ FastAPI + SQLAlchemy + PostgreSQL backend for tracking job applications.
    ```
 
    Tables are created on startup. Interactive API docs: http://localhost:8000/docs
+
+## Tests
+
+```
+pip install -r requirements-dev.txt
+pytest
+```
+
+The tests use the database from `DATABASE_URL` in `.env` (there is no separate test database). Every record they create carries a unique `pytest_<random>_` prefix and only those records are deleted at the end of the run, so do not point `DATABASE_URL` at a database where that is unacceptable. If `JWT_SECRET_KEY` is not set, the tests use a fixed test-only value.
