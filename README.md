@@ -21,6 +21,7 @@ FastAPI + SQLAlchemy + PostgreSQL backend for tracking job applications.
    | `JWT_SECRET_KEY` | Secret used to sign JWTs (required, never commit it) |
    | `JWT_ALGORITHM` | JWT algorithm (default `HS256`) |
    | `JWT_EXPIRE_MINUTES` | Token lifetime in minutes (default `60`) |
+   | `CORS_ORIGINS` | Comma-separated allowed browser origins (default `http://localhost:5173,http://localhost:3000`) |
 
 4. Run the API:
 
