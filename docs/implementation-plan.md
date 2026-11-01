@@ -370,3 +370,28 @@ MVP is complete when:
 ---
 
 **Jira issues covered:** CPT-1..4, CPT-5..24, CPT-25..32 (as retrieved from Jira search).
+
+## 12. Current status and RBAC scope (CPT-42)
+
+Snapshot of the repository after the RBAC work; Jira base URL `https://poteyrashi.atlassian.net/browse/`.
+
+### Implemented
+- Backend CRUD for companies, applications and rounds (`app/companies/router.py`, `app/applications/router.py`, `app/rounds/router.py`), per-user ownership with 403 (not owned) / 404 (missing), `applications.round_id` (current round).
+- Auth with JWT, env-driven settings (`app/core/config.py`), CORS, `GET /users/me`.
+- Frontend (Vite + React + react-router-dom) in `frontend/`: Login, Register, Applications, ApplicationForm, Rounds.
+- Tests: `tests/test_api.py` (pytest) and `tests/e2e/test_e2e.py` (Selenium, opt-in).
+
+### RBAC, dashboards and company management (CPT-33 to CPT-41, CPT-44 to CPT-48)
+- CPT-33 / CPT-36: `users.role` (`USER`/`ADMIN`, default `USER`), role claim in the JWT, role returned by `/users/me`; registration always creates `USER`.
+- CPT-37: admin bootstrap through the offline command `python -m app.scripts.bootstrap_admin <email>` (`app/scripts/bootstrap_admin.py`); no HTTP endpoint grants admin.
+- CPT-34 / CPT-38 / CPT-46: company create/update/delete require `ADMIN` (`require_admin` in `app/auth/dependencies.py`), reads stay open to any authenticated user, 409 when a company is referenced.
+- CPT-35 / CPT-39 / CPT-40 / CPT-41 / CPT-44 / CPT-45 / CPT-48: role-aware routing (`/` to `/dashboard` or `/admin`), admin company management, read-only `/companies`, shared stylesheet `frontend/src/styles.css`, loading/empty/success/error states, company select on the application form.
+- CPT-47: `POST /auth/login` takes a JSON body.
+
+### Still planned
+- CPT-27: Alembic migrations and removal of the runtime `Base.metadata.create_all` (until then the SQL in the README "Upgrading an existing database" section is used for schema changes).
+- CPT-28 (docker-compose), CPT-29 (OpenAPI parity), CPT-32 (CI).
+- CPT-43: Confluence updates (outside this repository).
+
+Key files: `app/models/user.py`, `app/auth/`, `app/companies/router.py`, `frontend/src/App.jsx`, `frontend/src/pages/`, `README.md`.
+

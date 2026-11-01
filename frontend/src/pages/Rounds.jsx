@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, ROUND_STATUSES } from "../api.js";
+import { ConfirmDialog, Empty, ErrorBox, Loading, Notice } from "../ui.jsx";
 
 const EMPTY = { round_name: "", status: "PENDING", feedback: "" };
 
@@ -8,21 +9,22 @@ export default function Rounds() {
   const { id } = useParams();
   const [rounds, setRounds] = useState(null);
   const [currentId, setCurrentId] = useState(null);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState("");
   const [editing, setEditing] = useState(null); // round id being edited, or "new"
   const [form, setForm] = useState(EMPTY);
   const [formError, setFormError] = useState("");
   const [toDelete, setToDelete] = useState(null);
+  const [notice, setNotice] = useState("");
 
   const load = useCallback(() => {
     setRounds(null);
-    setError(false);
+    setError("");
     Promise.all([api.rounds(id), api.application(id)])
       .then(([r, a]) => {
         setRounds(r);
         setCurrentId(a.round_id);
       })
-      .catch(() => setError(true));
+      .catch((err) => setError(err.message || "Failed to load rounds"));
   }, [id]);
 
   useEffect(load, [load]);
@@ -31,12 +33,14 @@ export default function Rounds() {
     setEditing("new");
     setForm(EMPTY);
     setFormError("");
+    setNotice("");
   };
 
   const startEdit = (r) => {
     setEditing(r.id);
     setForm({ round_name: r.round_name, status: r.status, feedback: r.feedback || "" });
     setFormError("");
+    setNotice("");
   };
 
   const save = async (e) => {
@@ -47,10 +51,11 @@ export default function Rounds() {
     try {
       if (editing === "new") await api.createRound(id, data);
       else await api.updateRound(id, editing, data);
+      setNotice(editing === "new" ? "Round created" : "Round updated");
       setEditing(null);
       load();
-    } catch {
-      setFormError("Unable to save round");
+    } catch (err) {
+      setFormError(`Unable to save round: ${err.message}`);
     }
   };
 
@@ -58,69 +63,76 @@ export default function Rounds() {
     try {
       await api.deleteRound(id, toDelete.id);
       setToDelete(null);
+      setNotice("Round deleted");
       load();
-    } catch {
+    } catch (err) {
       setToDelete(null);
-      setError(true);
+      setError(err.message || "Failed to delete round");
     }
   };
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <div className="page-head">
         <h2>Rounds</h2>
-        <span>
-          <Link to="/applications">Back to applications</Link>{" "}
-          <button onClick={startNew}>+ New round</button>
-        </span>
+        <div className="actions">
+          <Link to="/dashboard" className="btn">Back to applications</Link>
+          <button className="btn btn-primary" onClick={startNew}>+ New round</button>
+        </div>
       </div>
-      {error && <p role="alert">Failed to load rounds <button onClick={load}>Retry</button></p>}
-      {!error && rounds === null && <p>Loading rounds...</p>}
-      {!error && rounds && rounds.length === 0 && <p>This application has no rounds yet.</p>}
+      <Notice extra={notice} />
+      {error && <ErrorBox onRetry={load}>Failed to load rounds{error !== "Failed to load rounds" ? `: ${error}` : ""}</ErrorBox>}
+      {!error && rounds === null && <Loading text="Loading rounds..." />}
+      {!error && rounds && rounds.length === 0 && <Empty>This application has no rounds yet.</Empty>}
       {!error && rounds && rounds.length > 0 && (
-        <table>
-          <thead><tr><th>Round</th><th>Status</th><th>Feedback</th><th>Actions</th></tr></thead>
-          <tbody>
-            {rounds.map((r) => (
-              <tr key={r.id}>
-                <td>{r.round_name}{r.id === currentId && " (current)"}</td>
-                <td>{r.status}</td>
-                <td>{r.feedback}</td>
-                <td>
-                  <button onClick={() => startEdit(r)}>Edit</button>{" "}
-                  <button onClick={() => setToDelete(r)}>Delete</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Round</th><th>Status</th><th>Feedback</th><th>Actions</th></tr></thead>
+            <tbody>
+              {rounds.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.round_name}{r.id === currentId && " (current)"}</td>
+                  <td>{r.status}</td>
+                  <td>{r.feedback}</td>
+                  <td className="row-actions">
+                    <div className="actions">
+                      <button className="btn btn-sm" onClick={() => startEdit(r)}>Edit</button>
+                      <button className="btn btn-sm btn-danger" onClick={() => setToDelete(r)}>Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {editing && (
-        <form onSubmit={save} style={{ marginTop: 16, maxWidth: 480 }}>
+        <form onSubmit={save} className="card" style={{ marginTop: 16 }} noValidate>
           <h3>{editing === "new" ? "New Round" : "Edit Round"}</h3>
-          <p><label>Round name *{" "}
+          <label className="field"><span>Round name *</span>
             <input value={form.round_name} onChange={(e) => setForm({ ...form, round_name: e.target.value })} />
-          </label></p>
-          <p><label>Status{" "}
+          </label>
+          <label className="field"><span>Status</span>
             <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
               {ROUND_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
-          </label></p>
-          <p><label>Feedback<br />
-            <textarea rows={3} cols={50} value={form.feedback} onChange={(e) => setForm({ ...form, feedback: e.target.value })} />
-          </label></p>
-          <button type="submit">Save</button>{" "}
-          <button type="button" onClick={() => setEditing(null)}>Cancel</button>
-          {formError && <p role="alert" style={{ color: "crimson" }}>{formError}</p>}
+          </label>
+          <label className="field"><span>Feedback</span>
+            <textarea rows={3} value={form.feedback} onChange={(e) => setForm({ ...form, feedback: e.target.value })} />
+          </label>
+          <div className="actions">
+            <button type="submit" className="btn btn-primary">Save</button>
+            <button type="button" className="btn" onClick={() => setEditing(null)}>Cancel</button>
+          </div>
+          {formError && <p className="alert" role="alert">{formError}</p>}
         </form>
       )}
       {toDelete && (
-        <div role="dialog" style={{ border: "1px solid #888", padding: 16, marginTop: 16, maxWidth: 320 }}>
-          <strong>Confirm delete</strong>
-          <p>Delete round "{toDelete.round_name}"? This cannot be undone.</p>
-          <button onClick={() => setToDelete(null)}>Cancel</button>{" "}
-          <button onClick={confirmDelete}>Delete</button>
-        </div>
+        <ConfirmDialog
+          message={`Delete round "${toDelete.round_name}"? This cannot be undone.`}
+          onCancel={() => setToDelete(null)}
+          onConfirm={confirmDelete}
+        />
       )}
     </div>
   );

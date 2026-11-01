@@ -13,7 +13,7 @@ FastAPI + SQLAlchemy + PostgreSQL backend for tracking job applications.
    pip install -r requirements.txt
    ```
 
-3. Copy `.env.example` to `.env` and fill in the values:
+3. Create a `.env` file in the repository root with these values (never commit it):
 
    | Variable | Description |
    |---|---|
@@ -46,10 +46,38 @@ DO $$ BEGIN
 END $$;
 ```
 
+Adding the user role column (roles `USER` / `ADMIN`; existing accounts become `USER`):
+
+```sql
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR NOT NULL DEFAULT 'USER';
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_users_role') THEN
+    ALTER TABLE users ADD CONSTRAINT ck_users_role CHECK (role IN ('USER', 'ADMIN'));
+  END IF;
+END $$;
+```
+
+## Roles and the first administrator
+
+Public registration always creates a `USER`. Only an `ADMIN` can create, edit or delete companies; every authenticated user can list and select them. Admins get no extra access to other users' applications or rounds. The role is stored in the database and checked on every request (the JWT also carries a `role` claim for the UI, but it is not trusted for authorization), and `GET /users/me` returns it.
+
+There is no HTTP endpoint that grants admin rights. To make an existing account an administrator, run this on the server (it needs the same `.env`/database access as the API), using the email you registered with:
+
+```
+python -m app.scripts.bootstrap_admin you@example.com
+```
+
+Log in again afterwards to get a token with the new role.
+
+## Login contract
+
+`POST /auth/login` takes a JSON body `{"email": "...", "password": "..."}` and returns `{"access_token": "...", "token_type": "bearer"}`; wrong credentials return 401.
+
 ## Tests
 
 ```
-pip install -r requirements-dev.txt
+pip install -r requirements.txt
 pytest
 ```
 
@@ -61,7 +89,7 @@ Browser end-to-end tests (Selenium with Edge; the driver is fetched by Selenium 
 E2E=1 pytest tests/e2e
 ```
 
-On Windows PowerShell use `$env:E2E=1; pytest tests/e2e`. `npm install` must have been run in `frontend/` first.
+The browser tests create a prefixed test admin by updating the database directly. On Windows PowerShell use `$env:E2E=1; pytest tests/e2e`. `npm install` must have been run in `frontend/` first.
 
 ## Frontend
 

@@ -49,6 +49,25 @@ User statement: "the application must have round_id and user must be able to cre
 | Not-owned -> 403 / missing -> 404 (Option A) preserved for setting `round_id` | Done | pytest verified |
 | Rounds UI: `/applications/:id/rounds` (list with loading/empty/error, create, edit round_name/status/feedback, delete with confirmation, "(current)" marker) and a "Current round" select on the application edit form | Done | Selenium verified (create, edit, set/clear current round, delete with Cancel and confirm) |
 
+## RBAC, company management, dashboards (Jira CPT-33..41, CPT-44..49; updated Confluence pages of 2026-11-01)
+| Req | Artifact | Status | Notes |
+|---|---|---|---|
+| `users.role` USER/ADMIN (default USER, check constraint), role claim in JWT, `/users/me` returns role | CPT-36; LLD §2.1 option A | Done | pytest: claim in token, `/users/me` role; DB upgrade SQL in README; existing user stayed `USER` |
+| Public registration always creates USER (extra `role`/`is_admin` fields ignored) | CPT-33, CPT-36 | Done | pytest |
+| Admin bootstrap | CPT-37 | Done (CLI option) | `python -m app.scripts.bootstrap_admin <email>` promotes an EXISTING account; no HTTP endpoint (CPT-37 allows option B = CLI; the API option's Gherkin does not apply). pytest: function + subprocess run on prefixed test users |
+| Role verified from the DB on every request, not from the JWT claim | user requirement | Done | `require_admin` reads `user.role` loaded by `get_current_user`; pytest demotes an admin in the DB and the old token is refused (403) |
+| Companies: any authenticated user lists/gets; POST/PUT/DELETE ADMIN-only (403 for USER), 409 when referenced | CPT-5, CPT-34, CPT-38, CPT-46; LLD §3.2 | Done | pytest: USER 403 on POST/PUT/DELETE, 200 on GET; ADMIN CRUD; 409; 401 unauthenticated |
+| Admin gets no extra access to other users' applications/rounds (403 not-owned, 404 missing) | CPT-6, CPT-7, CPT-37 AC "No admin data access" | Done | pytest: admin GET/PUT/DELETE app and list/create/get/update/delete rounds -> 403; own list only |
+| CPT-47 login contract | CPT-47, CPT-11 | Done | Decision: JSON body `{email, password}` (acceptance criterion a). The old `Depends(LoginRequest)` read credentials from the query string (passwords in URLs). Frontend `api.login`, pytest and e2e helpers updated together; query-string login now returns 422. Form-encoded OAuth2 (option b) not added: not required, one option suffices |
+| CPT-49 schemas match routers | CPT-49 | Done | verified by import and OpenAPI generation (all routers load, tests pass); `ApplicationRead.round_id` etc. match models. No timestamps exist in the models, so none exposed. `app/auth/schemas.py` and `app/auth/service.py` remain empty (unused, left as is) |
+| Role-aware routing: `/` -> `/dashboard` (USER) or `/admin` (ADMIN); USER on `/admin` sees Access denied; unauthenticated -> `/login` | CPT-39, CPT-8 | Done | Selenium |
+| ADMIN company management UI (list/create/edit/delete with confirmation; 409 message "Cannot delete ... referenced by one or more applications"; company stays listed) | CPT-40 | Done | Selenium |
+| USER read-only `/companies` page, no Add/Edit/Delete | CPT-45 | Done | Selenium |
+| Company select on application form with loading/empty/error+Retry states | CPT-44, CPT-48 | Partial | select + save verified by Selenium; empty-companies message and the error/Retry state are implemented but not exercised by a test (the shared DB has companies when tests run) |
+| Consistent CSS, loading/empty/success/error states, responsive | CPT-35, CPT-41 | Done | one stylesheet `frontend/src/styles.css`; Selenium: success notices, loading/error states (earlier tests), 375px viewport emulation shows no horizontal overflow on login, user dashboard, admin dashboard, application form. 401/403/409/422/500 messages come from `messageFrom` in `api.js`; only 401, 403 (admin route), 409 and 422-style validation were exercised, 500 was not |
+| CPT-42 plan update | CPT-42 | Done | `docs/implementation-plan.md` section 12 (minimal) |
+| CPT-43 Confluence update | CPT-43 | Out of scope | not touched |
+
 ## Open questions
 1. RESOLVED by user decision (Option A): missing -> 404, owned by another user -> 403 (CPT-11). Confluence LLD §3.3/3.4/§4 still says 404 for not-owned and needs a documentation update by the user (not edited here).
 2. Stories outside the four epics (CPT-25, 27–32: Alembic, docker-compose, OpenAPI docs, `__pycache__` cleanup, CI) are out of scope unless approved.
@@ -60,3 +79,10 @@ User statement: "the application must have round_id and user must be able to cre
 8. Logging: no logging requirement found in Jira (CPT-1..11, CPT-26 read in full; a project text search for logging/logger/audit/observability matched only CPT-8 via the phrase "log in"), the four Confluence pages (read in full; CQL matches on HLD/Wireframes are "login" stemming), or `docs/implementation-plan.md` (no match). None added.
 9. E2E: `tests/e2e/test_e2e.py` (opt-in `E2E=1`, Selenium + Edge) - 11 scenarios pass (full suite incl. e2e: 26 passed after the 403 change); clean fresh-venv run (outside the repo) of the full suite: 16 passed.
 10. CORS default (`CORS_ORIGINS` unset in `.env`): code default is `http://localhost:5173,http://localhost:3000`. Verified with only `.env` config: `http://localhost:5173` and `http://localhost:3000` are allowed (simple request and preflight with Authorization); `http://127.0.0.1:5173` is NOT allowed (preflight returns 400, no allow-origin header). Vite dev server by default is not reachable at 127.0.0.1 (connection failed), so this only matters if the frontend is opened that way or `--host` is used. Recommended minimal fix if needed: set `CORS_ORIGINS` in `.env` to include `http://127.0.0.1:5173`. No config/code changed.
+11. Ambiguity: CPT-37 lists an API option (`POST /admin/bootstrap` with a bootstrap token) or a CLI; the user requirement says no public endpoint can grant admin, so the CLI was used. CPT-33's note mentions a route guarded by a shared secret; not implemented for the same reason.
+12. Stale artifacts: Wireframes and HLD 5.4/6.4 still say there is no rounds UI and send users to "Applications list" after login; Wireframes have no admin/company-management screens; LLD §3.1 still shows `/users/me` without role and the old login description; LLD §3.3/3.4 still say 404/403 as an "or". Those pages need a documentation update by the user (CPT-43).
+13. `.env.example` was deleted on main by the user; the README no longer tells users to copy it and lists the variables instead. Not recreated.
+14. CPT-11 mentions CI and an isolated test DB; CI (CPT-32) is out of scope and the user approved running tests against the existing DB with prefixed records.
+15. CPT-36 says "Migration/Alembic update (or equivalent)": the README "Upgrading an existing database" SQL is the equivalent (Alembic = CPT-27, out of scope).
+16. CPT-39 says admin visiting `/` goes to `/admin`; an admin can still open the application pages directly (they only see their own applications); there is no nav link for them. Say if admins should be blocked from them.
+

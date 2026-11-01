@@ -18,7 +18,7 @@ def register_user(user:UserCreate, db:Session=Depends(get_db)):
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already exists")
     
-    db_user=User(name=user.name, email=user.email, hashed_password=hash_password(user.password))
+    db_user=User(name=user.name, email=user.email, hashed_password=hash_password(user.password), role="USER")
     
     db.add(db_user)
     db.commit()
@@ -28,7 +28,7 @@ def register_user(user:UserCreate, db:Session=Depends(get_db)):
     }
     
 @router.post("/login", response_model=TokenResponse)
-def login(credentials:LoginRequest=Depends(), db:Session=Depends(get_db)):
+def login(credentials:LoginRequest, db:Session=Depends(get_db)):
     user=(
         db.query(User).filter(User.email==credentials.email).first()
     )
@@ -38,7 +38,7 @@ def login(credentials:LoginRequest=Depends(), db:Session=Depends(get_db)):
         )
     if not verify_password(credentials.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token=create_access_token({"sub":str(user.id)})
+    token=create_access_token({"sub":str(user.id), "role":user.role})
     return{
         "access_token":token
     }
